@@ -37,6 +37,7 @@ https://github.com/user-attachments/assets/52980f32-64d6-4b78-9cbf-18d6ae120cdd
   - [`rename_symbol_strict`](#rename_symbol_strict)
   - [`get_diagnostics`](#get_diagnostics)
   - [`restart_server`](#restart_server)
+  - [Code-action-backed refactoring tools](#code-action-backed-refactoring-tools)
 - [💡 Real-world Examples](#-real-world-examples)
   - [Finding Function Definitions](#finding-function-definitions)
   - [Finding All References](#finding-all-references)
@@ -441,6 +442,51 @@ Manually restart LSP servers. Can restart servers for specific file extensions o
 
 **Parameters:**
 - `extensions`: Array of file extensions to restart servers for (e.g., ["ts", "tsx"]). If not provided, all servers will be restarted (optional)
+
+### Code-action-backed refactoring tools
+
+Built on top of `textDocument/codeAction` + `workspace/executeCommand`, these tools expose the refactoring surface that any LSP server advertises. Tested primarily against jdtls (Java) but designed to work with any server that offers matching kinds (pylsp, tsserver, etc.). All accept `dry_run` to preview the edit before applying.
+
+**File-scope** (input: `file_path`):
+
+- `organize_imports` — remove unused imports, sort the rest (`source.organizeImports`)
+- `generate_tostring` — `source.generate.toString`
+- `generate_hashcode_equals` — `source.generate.hashCodeEquals`
+- `generate_constructors` — `source.generate.constructors`
+- `generate_getters_setters` — `source.generate.accessors` / `gettersSetters`
+- `generate_delegate_methods` — `source.generate.delegateMethods`
+- `override_methods` — `source.overrideMethods`
+
+**Quickfix** (input: `file_path` + `line`/`character`, 1-indexed):
+
+- `add_missing_imports` — resolve an unresolved symbol
+- `remove_unused_imports` — single-import counterpart of `organize_imports`
+- `add_missing_method`, `add_missing_field`, `add_override_annotation`
+- `surround_with_try_catch`, `add_missing_return`
+
+**Selection-range refactorings** (input: `file_path` + `start_line`/`start_character`/`end_line`/`end_character`):
+
+- `extract_variable` — `refactor.extract.variable`
+- `extract_constant` — `refactor.extract.constant`
+- `extract_method` — `refactor.extract.method`
+- `extract_field` — `refactor.extract.field`
+
+**Position refactorings** (input: `file_path` + `line`/`character`):
+
+- `inline` — variable/method/constant
+- `introduce_parameter` — local → method parameter
+- `convert_for_loop` — classic ↔ enhanced
+- `invert_boolean_or_condition`
+- `convert_lambda_anonymous`, `convert_method_reference_lambda`, `convert_anonymous_to_nested`
+- `move_member`, `move_inner_to_top_level`
+- `extract_interface`, `extract_superclass`
+
+**Generic escape hatches**:
+
+- `code_action` — list the actions a server offers at a range/position (optionally filtered by kind prefix); with `apply_index`, apply one of them.
+- `execute_command` — raw `workspace/executeCommand` passthrough; if the command returns a `WorkspaceEdit`, it is applied.
+
+See `docs/INTEGRATION_NOTES.md` for which tools require a real build-tool-backed project vs. jdtls's bare "invisible project" mode, and for gaps where jdtls only exposes the refactoring as a title-filtered `refactor` kind rather than a fine-grained sub-kind.
 
 ## 💡 Real-world Examples
 
