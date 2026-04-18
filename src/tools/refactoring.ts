@@ -1,4 +1,5 @@
 import { applyWorkspaceEdit } from '../file-editor.js';
+import { normalizeWorkspaceEdit } from '../lsp/operations.js';
 import { uriToPath } from '../utils.js';
 import { resolvePath, textResult, withWarning } from './helpers.js';
 import type { ToolDefinition } from './registry.js';
@@ -229,4 +230,107 @@ export const renameSymbolStrictTool: ToolDefinition = {
   },
 };
 
-export const refactoringTools: ToolDefinition[] = [renameSymbolTool, renameSymbolStrictTool];
+export const organizeImportsTool: ToolDefinition = {
+  name: 'organize_imports',
+  description:
+    "Organize imports in a file using the configured language server (e.g. jdtls for Java, pylsp for Python, typescript-language-server for TypeScript). Removes unused imports and re-orders the remaining ones according to the server's rules. By default applies the changes; use dry_run to preview.",
+  inputSchema: {
+    type: 'object',
+    properties: {
+      file_path: {
+        type: 'string',
+        description: 'The path to the file whose imports should be organized',
+      },
+      dry_run: {
+        type: 'boolean',
+        description: 'If true, only preview the changes without applying them (default: false)',
+      },
+    },
+    required: ['file_path'],
+  },
+  handler: async (args, client) => {
+    const { file_path, dry_run = false } = args as {
+      file_path: string;
+      dry_run?: boolean;
+    };
+    const absolutePath = resolvePath(file_path);
+
+    const fullRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 0 },
+    };
+
+    try {
+      const actions = await client.getCodeActions(absolutePath, fullRange, [
+        'source.organizeImports',
+      ]);
+
+      const organizeAction = actions.find(
+        (a) => a.kind === 'source.organizeImports' || a.kind?.startsWith('source.organizeImports.')
+      );
+
+      if (!organizeAction) {
+        return textResult(
+          `No organize-imports code action available for ${file_path}. The language server may not support source.organizeImports, or the file has nothing to organize.`
+        );
+      }
+
+      const resolved = await client.resolveCodeAction(absolutePath, organizeAction);
+
+      let normalized = normalizeWorkspaceEdit(resolved.edit);
+
+      if (Object.keys(normalized.changes).length === 0 && resolved.command) {
+        const commandResult = await client.executeCommand(
+          absolutePath,
+          resolved.command.command,
+          resolved.command.arguments
+        );
+        normalized = normalizeWorkspaceEdit(commandResult);
+      }
+
+      if (Object.keys(normalized.changes).length === 0) {
+        return textResult(
+          `No changes produced by organize_imports for ${file_path}. Imports may already be in order.`
+        );
+      }
+
+      const changeLines: string[] = [];
+      for (const [uri, edits] of Object.entries(normalized.changes)) {
+        changeLines.push(`File: ${uriToPath(uri)}`);
+        for (const edit of edits) {
+          const { start, end } = edit.range;
+          const newTextPreview = edit.newText.replace(/\n/g, '\\n').slice(0, 120);
+          changeLines.push(
+            `  - Line ${start.line + 1}, Column ${start.character + 1} to Line ${end.line + 1}, Column ${end.character + 1}: "${newTextPreview}"`
+          );
+        }
+      }
+
+      if (dry_run) {
+        return textResult(
+          `[DRY RUN] Would organize imports in ${file_path}:\n${changeLines.join('\n')}`
+        );
+      }
+
+      const editResult = await applyWorkspaceEdit(normalized, { lspClient: client });
+
+      if (!editResult.success) {
+        return textResult(`Failed to organize imports: ${editResult.error}`);
+      }
+
+      return textResult(
+        `Organized imports in ${file_path}.\n\nModified files:\n${editResult.filesModified.map((f) => `- ${f}`).join('\n')}`
+      );
+    } catch (error) {
+      return textResult(
+        `Error organizing imports: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  },
+};
+
+export const refactoringTools: ToolDefinition[] = [
+  renameSymbolTool,
+  renameSymbolStrictTool,
+  organizeImportsTool,
+];

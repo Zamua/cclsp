@@ -220,6 +220,28 @@ export class ServerManager {
             dynamicRegistration: false,
             relatedDocumentSupport: false,
           },
+          codeAction: {
+            dynamicRegistration: false,
+            codeActionLiteralSupport: {
+              codeActionKind: {
+                valueSet: [
+                  '',
+                  'quickfix',
+                  'refactor',
+                  'refactor.extract',
+                  'refactor.inline',
+                  'refactor.rewrite',
+                  'source',
+                  'source.organizeImports',
+                ],
+              },
+            },
+            isPreferredSupport: true,
+            resolveSupport: {
+              properties: ['edit'],
+            },
+            dataSupport: true,
+          },
         },
         workspace: {
           workspaceEdit: {

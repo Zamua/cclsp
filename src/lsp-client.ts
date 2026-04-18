@@ -4,17 +4,21 @@ import { loadGitignore, scanDirectoryForExtensions } from './file-scanner.js';
 import { logger } from './logger.js';
 import { loadConfig } from './lsp/config.js';
 import {
+  type CodeAction,
   getValidSymbolKinds,
+  executeCommand as opsExecuteCommand,
   findDefinition as opsFindDefinition,
   findImplementation as opsFindImplementation,
   findReferences as opsFindReferences,
   findSymbolsByName as opsFindSymbolsByName,
+  getCodeActions as opsGetCodeActions,
   getDiagnostics as opsGetDiagnostics,
   hover as opsHover,
   incomingCalls as opsIncomingCalls,
   outgoingCalls as opsOutgoingCalls,
   prepareCallHierarchy as opsPrepareCallHierarchy,
   renameSymbol as opsRenameSymbol,
+  resolveCodeAction as opsResolveCodeAction,
   workspaceSymbol as opsWorkspaceSymbol,
   symbolKindToString,
 } from './lsp/operations.js';
@@ -317,6 +321,25 @@ export class LSPClient {
     const filePath = uriToPath(item.uri);
     const serverState = await this.getServer(filePath);
     return opsOutgoingCalls(serverState, item);
+  }
+
+  async getCodeActions(
+    filePath: string,
+    range: { start: Position; end: Position },
+    only?: string[]
+  ): Promise<CodeAction[]> {
+    const serverState = await this.getServer(filePath);
+    return opsGetCodeActions(serverState, filePath, range, only);
+  }
+
+  async resolveCodeAction(filePath: string, action: CodeAction): Promise<CodeAction> {
+    const serverState = await this.getServer(filePath);
+    return opsResolveCodeAction(serverState, action);
+  }
+
+  async executeCommand(filePath: string, command: string, args?: unknown[]): Promise<unknown> {
+    const serverState = await this.getServer(filePath);
+    return opsExecuteCommand(serverState, command, args);
   }
 
   async preloadServers(debug = true): Promise<void> {

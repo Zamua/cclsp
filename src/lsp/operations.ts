@@ -818,3 +818,135 @@ export async function outgoingCalls(
 
   return [];
 }
+
+// --- Code Actions ---
+
+export interface CodeAction {
+  title: string;
+  kind?: string;
+  diagnostics?: unknown[];
+  isPreferred?: boolean;
+  disabled?: { reason: string };
+  edit?: {
+    changes?: Record<string, Array<{ range: { start: Position; end: Position }; newText: string }>>;
+    documentChanges?: Array<{
+      textDocument: { uri: string; version?: number };
+      edits: Array<{ range: { start: Position; end: Position }; newText: string }>;
+    }>;
+  };
+  command?: {
+    title: string;
+    command: string;
+    arguments?: unknown[];
+  };
+  data?: unknown;
+}
+
+export interface NormalizedWorkspaceEdit {
+  changes: Record<string, Array<{ range: { start: Position; end: Position }; newText: string }>>;
+}
+
+/**
+ * Normalize a WorkspaceEdit to the {changes} form that applyWorkspaceEdit expects.
+ * Accepts either the legacy `changes` map or the modern `documentChanges` array.
+ */
+export function normalizeWorkspaceEdit(edit: unknown): NormalizedWorkspaceEdit {
+  const changes: NormalizedWorkspaceEdit['changes'] = {};
+  if (!edit || typeof edit !== 'object') return { changes };
+
+  const e = edit as {
+    changes?: NormalizedWorkspaceEdit['changes'];
+    documentChanges?: Array<{
+      textDocument: { uri: string; version?: number };
+      edits: Array<{ range: { start: Position; end: Position }; newText: string }>;
+    }>;
+  };
+
+  if (e.changes) {
+    for (const [uri, edits] of Object.entries(e.changes)) {
+      changes[uri] = [...(changes[uri] || []), ...edits];
+    }
+  }
+
+  if (e.documentChanges) {
+    for (const dc of e.documentChanges) {
+      if (!dc.textDocument || !dc.edits) continue;
+      const uri = dc.textDocument.uri;
+      changes[uri] = [...(changes[uri] || []), ...dc.edits];
+    }
+  }
+
+  return { changes };
+}
+
+export async function getCodeActions(
+  serverState: ServerState,
+  filePath: string,
+  range: { start: Position; end: Position },
+  only?: string[]
+): Promise<CodeAction[]> {
+  logger.debug(
+    `[DEBUG getCodeActions] Requesting code actions for ${filePath} at ${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character} only=${only?.join(',') || 'any'}\n`
+  );
+
+  await serverState.initializationPromise;
+  await serverState.documentManager.ensureOpen(filePath);
+
+  const method = 'textDocument/codeAction';
+  const timeout = serverState.adapter?.getTimeout?.(method) ?? 30000;
+
+  const result = await serverState.transport.sendRequest(
+    method,
+    {
+      textDocument: { uri: pathToUri(filePath) },
+      range,
+      context: {
+        diagnostics: [],
+        ...(only && only.length > 0 ? { only } : {}),
+      },
+    },
+    timeout
+  );
+
+  if (!Array.isArray(result)) {
+    logger.debug('[DEBUG getCodeActions] Non-array result, returning empty\n');
+    return [];
+  }
+
+  return result.filter((a): a is CodeAction => !!a && typeof a === 'object') as CodeAction[];
+}
+
+export async function resolveCodeAction(
+  serverState: ServerState,
+  action: CodeAction
+): Promise<CodeAction> {
+  if (action.edit || !action.data) return action;
+
+  const method = 'codeAction/resolve';
+  const timeout = serverState.adapter?.getTimeout?.(method) ?? 30000;
+
+  try {
+    const result = await serverState.transport.sendRequest(method, action, timeout);
+    if (result && typeof result === 'object') {
+      return result as CodeAction;
+    }
+  } catch (error) {
+    logger.debug(`[DEBUG resolveCodeAction] Resolve failed, returning original: ${error}\n`);
+  }
+  return action;
+}
+
+export async function executeCommand(
+  serverState: ServerState,
+  command: string,
+  args?: unknown[]
+): Promise<unknown> {
+  logger.debug(`[DEBUG executeCommand] Executing ${command} with ${args?.length ?? 0} args\n`);
+
+  await serverState.initializationPromise;
+
+  const method = 'workspace/executeCommand';
+  const timeout = serverState.adapter?.getTimeout?.(method) ?? 30000;
+
+  return serverState.transport.sendRequest(method, { command, arguments: args ?? [] }, timeout);
+}
