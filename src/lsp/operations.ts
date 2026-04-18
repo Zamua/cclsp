@@ -920,8 +920,13 @@ export async function resolveCodeAction(
   serverState: ServerState,
   action: CodeAction
 ): Promise<CodeAction> {
-  if (action.edit || !action.data) return action;
+  // If the action already carries an inline edit, no resolve is needed.
+  if (action.edit) return action;
 
+  // Some servers (notably gopls) return code actions with no edit, no
+  // command, and sometimes no `data` field — resolve must be called to
+  // obtain the actual edit. Try resolve unconditionally; if the server
+  // doesn't support it the request will error and we return the original.
   const method = 'codeAction/resolve';
   const timeout = serverState.adapter?.getTimeout?.(method) ?? 30000;
 
