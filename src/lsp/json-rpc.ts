@@ -25,7 +25,11 @@ export class JsonRpcTransport {
     number,
     { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }
   > = new Map();
-  private buffer = '';
+  // Buffer is kept as a byte Buffer (not a string) because the LSP spec
+  // measures Content-Length in UTF-8 bytes, not UTF-16 code units, and
+  // Node stream chunks can split mid-codepoint.
+  private buffer: Buffer = Buffer.alloc(0);
+  private static readonly HEADER_SEP = Buffer.from('\r\n\r\n');
 
   constructor(
     private readonly process: ChildProcess,
@@ -40,35 +44,37 @@ export class JsonRpcTransport {
    */
   private setupStdoutHandler(): void {
     this.process.stdout?.on('data', (data: Buffer) => {
-      this.buffer += data.toString();
+      this.buffer = Buffer.concat([this.buffer, data]);
 
-      while (this.buffer.includes('\r\n\r\n')) {
-        const headerEndIndex = this.buffer.indexOf('\r\n\r\n');
-        const headerPart = this.buffer.substring(0, headerEndIndex);
+      while (true) {
+        const headerEndIndex = this.buffer.indexOf(JsonRpcTransport.HEADER_SEP);
+        if (headerEndIndex === -1) break;
+
+        const headerPart = this.buffer.subarray(0, headerEndIndex).toString('utf8');
         const contentLengthMatch = headerPart.match(/Content-Length: (\d+)/);
 
-        if (contentLengthMatch?.[1]) {
-          const contentLength = Number.parseInt(contentLengthMatch[1]);
-          const messageStart = headerEndIndex + 4;
+        if (!contentLengthMatch?.[1]) {
+          this.buffer = this.buffer.subarray(
+            headerEndIndex + JsonRpcTransport.HEADER_SEP.length
+          );
+          continue;
+        }
 
-          if (this.buffer.length >= messageStart + contentLength) {
-            const messageContent = this.buffer.substring(
-              messageStart,
-              messageStart + contentLength
-            );
-            this.buffer = this.buffer.substring(messageStart + contentLength);
+        const contentLength = Number.parseInt(contentLengthMatch[1]);
+        const messageStart = headerEndIndex + JsonRpcTransport.HEADER_SEP.length;
 
-            try {
-              const message: LSPMessage = JSON.parse(messageContent);
-              this.handleIncoming(message);
-            } catch (error) {
-              logger.error(`Failed to parse LSP message: ${error}\n`);
-            }
-          } else {
-            break;
-          }
-        } else {
-          this.buffer = this.buffer.substring(headerEndIndex + 4);
+        if (this.buffer.length < messageStart + contentLength) break;
+
+        const messageContent = this.buffer
+          .subarray(messageStart, messageStart + contentLength)
+          .toString('utf8');
+        this.buffer = this.buffer.subarray(messageStart + contentLength);
+
+        try {
+          const message: LSPMessage = JSON.parse(messageContent);
+          this.handleIncoming(message);
+        } catch (error) {
+          logger.error(`Failed to parse LSP message: ${error}\n`);
         }
       }
     });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
+import { beforeEach, describe, expect, it, jest } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { JsonRpcTransport } from './json-rpc.js';
@@ -194,6 +194,62 @@ describe('JsonRpcTransport', () => {
       mock.stdout.emit('data', Buffer.from(frame));
 
       expect(messageHandler).toHaveBeenCalledTimes(2);
+    });
+
+    it('handles multi-byte UTF-8 payloads without drifting into the next message', () => {
+      // Regression for jdtls: its timestamps contain U+202F (NARROW NO-BREAK SPACE,
+      // 3 bytes in UTF-8 but 1 UTF-16 code unit). Content-Length is measured in
+      // bytes, so a UTF-16-indexed parser over-slices and corrupts subsequent messages.
+      const msg1: LSPMessage = {
+        jsonrpc: '2.0',
+        method: 'window/logMessage',
+        params: { type: 3, message: 'Apr 18\u202FAM' },
+      };
+      const msg2: LSPMessage = {
+        jsonrpc: '2.0',
+        method: 'window/logMessage',
+        params: { type: 3, message: 'second' },
+      };
+      const c1 = JSON.stringify(msg1);
+      const c2 = JSON.stringify(msg2);
+      const frame = Buffer.concat([
+        Buffer.from(`Content-Length: ${Buffer.byteLength(c1)}\r\n\r\n`),
+        Buffer.from(c1, 'utf8'),
+        Buffer.from(`Content-Length: ${Buffer.byteLength(c2)}\r\n\r\n`),
+        Buffer.from(c2, 'utf8'),
+      ]);
+
+      mock.stdout.emit('data', frame);
+
+      expect(messageHandler).toHaveBeenCalledTimes(2);
+      expect(messageHandler.mock.calls[0]?.[0]).toMatchObject({
+        params: { message: 'Apr 18\u202FAM' },
+      });
+      expect(messageHandler.mock.calls[1]?.[0]).toMatchObject({
+        params: { message: 'second' },
+      });
+    });
+
+    it('handles a chunk boundary inside a multi-byte UTF-8 character', () => {
+      // Node streams can split a Buffer anywhere, including mid-codepoint.
+      const msg: LSPMessage = {
+        jsonrpc: '2.0',
+        method: 'notif',
+        params: { text: '\u202F' },
+      };
+      const content = Buffer.from(JSON.stringify(msg), 'utf8');
+      const header = Buffer.from(`Content-Length: ${content.length}\r\n\r\n`);
+      const full = Buffer.concat([header, content]);
+
+      // Split in the middle of the U+202F three-byte sequence.
+      const textIdx = full.indexOf(Buffer.from([0xe2, 0x80, 0xaf]));
+      mock.stdout.emit('data', full.subarray(0, textIdx + 1));
+      mock.stdout.emit('data', full.subarray(textIdx + 1));
+
+      expect(messageHandler).toHaveBeenCalledTimes(1);
+      expect(messageHandler.mock.calls[0]?.[0]).toMatchObject({
+        params: { text: '\u202F' },
+      });
     });
   });
 
