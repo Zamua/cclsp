@@ -47,7 +47,9 @@ public class ${className} {
       { file_path: file, dry_run: false },
       session.client
     );
-    expect(result.content[0]?.text).toContain('Organized imports');
+    // Helper wraps the result as 'Applied "<action title>" to <file>'.
+    expect(result.content[0]?.text).toContain('Applied');
+    expect(result.content[0]?.text?.toLowerCase()).toContain('organize imports');
 
     const after = readFileSync(file, 'utf-8');
     expect(after).not.toContain('java.io.IOException');

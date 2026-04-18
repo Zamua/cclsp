@@ -544,47 +544,73 @@ export const introduceParameterTool = positionRefactoringTool(
 // -------------------------------------------------------------------
 // Group D — rewrite-in-place actions
 // -------------------------------------------------------------------
+// jdtls surfaces most rewrite refactorings under the generic `refactor` or
+// `refactor.rewrite` kind and identifies each by title. We request the broad
+// kinds and filter by title.
 
-export const convertForLoopTool = positionRefactoringTool(
+function rewriteTool(
+  name: string,
+  description: string,
+  verb: string,
+  titleMatch: string
+): ToolDefinition {
+  return {
+    name,
+    description,
+    inputSchema: {
+      type: 'object',
+      properties: { ...FILE_PATH_PROP, ...POSITION_PROPS, ...DRY_RUN_PROP },
+      required: ['file_path', 'line', 'character'],
+    },
+    handler: async (args, client) => {
+      const { file_path, line, character, dry_run = false } = args as unknown as PositionArgs;
+      return applyCodeAction({
+        client,
+        filePath: resolvePath(file_path),
+        range: oneIndexedPositionToLspRange(line, character),
+        only: ['refactor', 'refactor.rewrite'],
+        dryRun: dry_run,
+        description: verb,
+        kindMatch: ['refactor', 'refactor.rewrite'],
+        titleMatch,
+      });
+    },
+  };
+}
+
+export const convertForLoopTool = rewriteTool(
   'convert_for_loop',
-  'Convert between classic for-loops and enhanced (for-each) loops. Server offers whichever direction is applicable at the cursor. Backed by refactor.rewrite.convertToEnhancedForLoop and convertToForLoop.',
+  'Convert between classic for-loops and enhanced (for-each) loops at the cursor. Title-matched.',
   'convert for-loop',
-  ['refactor.rewrite.convertToEnhancedForLoop', 'refactor.rewrite.convertToForLoop']
+  'for'
 );
 
-export const invertBooleanOrConditionTool = positionRefactoringTool(
+export const invertBooleanOrConditionTool = rewriteTool(
   'invert_boolean_or_condition',
-  'Invert the boolean expression, condition, or boolean variable at the cursor. Backed by refactor.rewrite.invertBooleanExpression/invertCondition/invertLocalVariable.',
+  'Invert the boolean expression, condition, or boolean variable at the cursor. Title-matched on "invert".',
   'invert',
-  [
-    'refactor.rewrite.invertBooleanExpression',
-    'refactor.rewrite.invertCondition',
-    'refactor.rewrite.invertLocalVariable',
-  ]
+  'invert'
 );
 
-export const convertLambdaAnonymousTool = positionRefactoringTool(
+export const convertLambdaAnonymousTool = rewriteTool(
   'convert_lambda_anonymous',
-  'Convert between a lambda expression and an anonymous inner class at the cursor. Server offers whichever direction is applicable. Backed by refactor.rewrite.convertLambdaToAnonymous and convertAnonymousToLambda.',
+  'Convert between a lambda expression and an anonymous inner class at the cursor.',
   'convert lambda/anonymous',
-  ['refactor.rewrite.convertLambdaToAnonymous', 'refactor.rewrite.convertAnonymousToLambda']
+  'anonymous'
 );
 
-export const convertMethodReferenceLambdaTool = positionRefactoringTool(
+export const convertMethodReferenceLambdaTool = rewriteTool(
   'convert_method_reference_lambda',
-  'Convert between a method reference and a lambda expression at the cursor. Backed by refactor.rewrite.convertMethodReferenceToLambda and convertLambdaToMethodReference.',
+  'Convert between a method reference and a lambda expression at the cursor.',
   'convert method-reference/lambda',
-  [
-    'refactor.rewrite.convertMethodReferenceToLambda',
-    'refactor.rewrite.convertLambdaToMethodReference',
-  ]
+  'method reference'
 );
 
-export const convertAnonymousToNestedTool = positionRefactoringTool(
+export const convertAnonymousToNestedTool = rewriteTool(
   'convert_anonymous_to_nested',
-  'Convert an anonymous inner class at the cursor into a named nested class. Backed by refactor.rewrite.convertAnonymousToNested.',
+  'Convert an anonymous inner class at the cursor into a named nested class.',
   'convert anonymous to nested',
-  ['refactor.rewrite.convertAnonymousToNested']
+  'nested'
 );
 
 // -------------------------------------------------------------------
