@@ -646,6 +646,108 @@ export const extractSuperclassTool = positionRefactoringTool(
 );
 
 // -------------------------------------------------------------------
+// Group G — gopls-specific refactorings
+// -------------------------------------------------------------------
+// gopls advertises each refactoring with a specific kind (unlike jdtls,
+// which batches most under bare `refactor`). These tools request the exact
+// kind and rely on the helper's resolve path to fill the edit.
+
+export const fillStructTool = positionRefactoringTool(
+  'fill_struct',
+  'Fill a Go struct literal with zero-value fields. Backed by gopls refactor.rewrite.fillStruct.',
+  'fill struct',
+  ['refactor.rewrite.fillStruct']
+);
+
+export const fillSwitchTool = positionRefactoringTool(
+  'fill_switch',
+  'Fill missing cases in a Go switch statement (enum-like types). Backed by gopls refactor.rewrite.fillSwitch.',
+  'fill switch',
+  ['refactor.rewrite.fillSwitch']
+);
+
+export const changeQuoteTool = positionRefactoringTool(
+  'change_quote',
+  'Toggle a Go string literal between backtick (raw) and double-quote form. Backed by gopls refactor.rewrite.changeQuote.',
+  'change quote style',
+  ['refactor.rewrite.changeQuote']
+);
+
+export const joinLinesTool = positionRefactoringTool(
+  'join_lines',
+  'Collapse a multi-line Go statement (arg list, slice literal, struct literal, etc.) onto a single line. Backed by gopls refactor.rewrite.joinLines.',
+  'join lines',
+  ['refactor.rewrite.joinLines']
+);
+
+export const splitLinesTool = positionRefactoringTool(
+  'split_lines',
+  'Split a Go statement (arg list, slice literal, etc.) across multiple lines. Backed by gopls refactor.rewrite.splitLines.',
+  'split lines',
+  ['refactor.rewrite.splitLines']
+);
+
+export const eliminateDotImportTool = positionRefactoringTool(
+  'eliminate_dot_import',
+  'Replace a Go dot-import (`import . "pkg"`) with a qualified import, rewriting all bare references. Backed by gopls refactor.rewrite.eliminateDotImport.',
+  'eliminate dot import',
+  ['refactor.rewrite.eliminateDotImport']
+);
+
+export const removeUnusedParamTool = positionRefactoringTool(
+  'remove_unused_param',
+  'Delete an unused parameter from a Go function and update all call sites. Backed by gopls refactor.rewrite.removeUnusedParam.',
+  'remove unused parameter',
+  ['refactor.rewrite.removeUnusedParam']
+);
+
+export const moveParamTool: ToolDefinition = {
+  name: 'move_param',
+  description:
+    'Reorder Go function parameters by moving the parameter at the cursor left or right. Backed by gopls refactor.rewrite.moveParamLeft / moveParamRight.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      ...FILE_PATH_PROP,
+      ...POSITION_PROPS,
+      direction: {
+        type: 'string',
+        enum: ['left', 'right'],
+        description: 'Which direction to move the parameter ("left" or "right").',
+      },
+      ...DRY_RUN_PROP,
+    },
+    required: ['file_path', 'line', 'character', 'direction'],
+  },
+  handler: async (args, client) => {
+    const {
+      file_path,
+      line,
+      character,
+      direction,
+      dry_run = false,
+    } = args as unknown as PositionArgs & { direction: 'left' | 'right' };
+    const kind =
+      direction === 'right' ? 'refactor.rewrite.moveParamRight' : 'refactor.rewrite.moveParamLeft';
+    return applyCodeAction({
+      client,
+      filePath: resolvePath(file_path),
+      range: oneIndexedPositionToLspRange(line, character),
+      only: [kind],
+      dryRun: dry_run,
+      description: `move parameter ${direction}`,
+    });
+  },
+};
+
+export const moveToNewFileTool = positionRefactoringTool(
+  'move_to_new_file',
+  'Move the top-level Go declaration at the cursor into its own file. Backed by gopls refactor.extract.toNewFile.',
+  'move to new file',
+  ['refactor.extract.toNewFile']
+);
+
+// -------------------------------------------------------------------
 // Group F — generic escape hatches
 // -------------------------------------------------------------------
 
@@ -853,6 +955,16 @@ export const refactoringTools: ToolDefinition[] = [
   moveInnerToTopLevelTool,
   extractInterfaceTool,
   extractSuperclassTool,
+  // Group G — gopls-specific
+  fillStructTool,
+  fillSwitchTool,
+  changeQuoteTool,
+  joinLinesTool,
+  splitLinesTool,
+  eliminateDotImportTool,
+  removeUnusedParamTool,
+  moveParamTool,
+  moveToNewFileTool,
   // Group F
   codeActionTool,
   executeCommandTool,
