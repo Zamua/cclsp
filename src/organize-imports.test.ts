@@ -54,7 +54,7 @@ describe('organize_imports MCP tool', () => {
       asClient(mockClient)
     );
 
-    expect(result.content[0]?.text).toContain('No organize-imports code action available');
+    expect(result.content[0]?.text).toContain('No action available to organize imports');
     expect(mockClient.executeCommand).not.toHaveBeenCalled();
   });
 
@@ -180,7 +180,7 @@ describe('organize_imports MCP tool', () => {
       asClient(mockClient)
     );
 
-    expect(result.content[0]?.text).toContain('No changes produced');
+    expect(result.content[0]?.text).toContain('produced no changes');
   });
 
   it('reports errors thrown by the LSP layer', async () => {
@@ -191,7 +191,7 @@ describe('organize_imports MCP tool', () => {
       asClient(mockClient)
     );
 
-    expect(result.content[0]?.text).toContain('Error organizing imports: jdtls not ready');
+    expect(result.content[0]?.text).toContain('Error running organize imports: jdtls not ready');
   });
 
   it('matches sub-kinds of source.organizeImports', async () => {

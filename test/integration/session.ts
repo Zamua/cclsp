@@ -37,8 +37,7 @@ import { pathToUri } from '../../src/utils.ts';
 const CACHE_ROOT = join(homedir(), '.cache', 'cclsp-integration');
 const JDTLS_DIR = join(CACHE_ROOT, 'jdtls');
 const JDTLS_DATA_DIR = join(CACHE_ROOT, 'jdtls-data');
-const JDTLS_URL =
-  'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz';
+const JDTLS_URL = 'https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz';
 
 export interface IntegrationSession {
   client: LSPClient;

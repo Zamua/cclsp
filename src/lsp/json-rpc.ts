@@ -54,9 +54,7 @@ export class JsonRpcTransport {
         const contentLengthMatch = headerPart.match(/Content-Length: (\d+)/);
 
         if (!contentLengthMatch?.[1]) {
-          this.buffer = this.buffer.subarray(
-            headerEndIndex + JsonRpcTransport.HEADER_SEP.length
-          );
+          this.buffer = this.buffer.subarray(headerEndIndex + JsonRpcTransport.HEADER_SEP.length);
           continue;
         }
 
